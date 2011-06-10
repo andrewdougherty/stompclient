@@ -25,7 +25,8 @@ module StompClient where
     import Text.Regex.Posix
     
     {-| All the stomp commands.  They are instances of Read and Show to aid serialization. -}
-    data Command = ACK | ABORT | BEGIN | COMMIT | DISCONNECT | SEND | SUBSCRIBE | UNSUBSCRIBE
+    data Command = ACK | ABORT | BEGIN | CONNECT | CONNECTED | COMMIT
+                 | DISCONNECT | SEND | SUBSCRIBE | UNSUBSCRIBE
         deriving (Read, Show)
     
     {-| The HeaderMap holds all the headers in the Frame.  The keys and values are strings. -}
@@ -57,14 +58,23 @@ module StompClient where
     
     data Server = StompServer
     
-    recv :: Server -> IO(Frame)
-    recv = return
+    connect :: String -> String -> Server -> IO()
+    connect user passcode = send connectFrame
+        where connectFrame = StompFrame CONNECT (HeaderMap headers) ""
+              headers = fromList [("login", user), ("passcode", passcode)]
     
-    send :: Server -> Frame -> IO()
-    send server = (send server) . show
+    send :: Frame -> Server -> IO()
+    send frame server = return ()
     
-    subscribeTo :: Server -> Queue -> IO()
-    subscribeTo s q = send s (StompFrame SUBSCRIBE ("queue: " ++ q) "")
+    recv :: IO()
+    recv = return ()
     
-    unsubscribeFrom :: Server -> Queue -> IO()
-    unsubscribeFrom s q = send s (StompFrame UNSUBSCRIBE ("queue: " ++ q) "")
+    type Queue = String
+    
+    subscribeTo :: Queue -> Server -> IO()
+    subscribeTo q = send (StompFrame SUBSCRIBE (HeaderMap headers) "")
+        where headers = fromList [("queue", q)] 
+    
+    unsubscribeFrom :: Queue -> Server -> IO()
+    unsubscribeFrom q = send (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
+        where headers = fromList [("queue", q)]
