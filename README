@@ -1,0 +1,4 @@
+This library is a stomp protocol client implemented in the Haskell
+programming language.  I am teaching myself networking in Haskell
+so it is going to be rough for a while, but the frame parsing
+should be pretty good.
