@@ -20,7 +20,7 @@
 
 module StompClient where
     
-    import Data.Map (Map, foldrWithKey, fromList)
+    import Data.Map (Map, empty, foldrWithKey, fromList)
     import Network
     import Text.Regex.Posix
     
@@ -52,29 +52,35 @@ module StompClient where
             where (command, _, theRest) = s =~ "\n" :: (String, String, String)
                   (headers, _, body) = theRest =~ "\n\n" :: (String, String, String)
     
-    {-| The Frame is an instance of Show to allow for easy serialization. -}
+    {-| The Frame is an instance of Show to aid serialization. -}
     instance Show Frame where
         show (StompFrame command headers body) = unlines [show command, show headers, show body]
     
     data Server = StompServer
     
-    connect :: String -> String -> Server -> IO()
-    connect user passcode = send connectFrame
-        where connectFrame = StompFrame CONNECT (HeaderMap headers) ""
-              headers = fromList [("login", user), ("passcode", passcode)]
+    acknowledgeMessage :: String -> String -> Server -> IO()
+    acknowledgeMessage msgID trans = sendMessage (StompFrame ACK (HeaderMap headers) "")
+        where headers = fromList [("message-id", msgID), ("transaction", trans)]
     
-    send :: Frame -> Server -> IO()
-    send frame server = return ()
+    connectTo :: String -> String -> Server -> IO()
+    connectTo user passcode = sendMessage (StompFrame CONNECT (HeaderMap headers) "")
+        where headers = fromList [("login", user), ("passcode", passcode)]
     
-    recv :: IO()
-    recv = return ()
+    disconnectFrom :: Server -> IO()
+    disconnectFrom = sendMessage (StompFrame DISCONNECT (HeaderMap Data.Map.empty) "")
+    
+    sendMessage :: Frame -> Server -> IO()
+    sendMessage frame server = return ()
+    
+    recvMessage :: IO()
+    recvMessage = return ()
     
     type Queue = String
     
     subscribeTo :: Queue -> Server -> IO()
-    subscribeTo q = send (StompFrame SUBSCRIBE (HeaderMap headers) "")
-        where headers = fromList [("queue", q)] 
+    subscribeTo q = sendMessage (StompFrame SUBSCRIBE (HeaderMap headers) "")
+        where headers = fromList [("destination", q), ("ack", "auto")] 
     
     unsubscribeFrom :: Queue -> Server -> IO()
-    unsubscribeFrom q = send (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
-        where headers = fromList [("queue", q)]
+    unsubscribeFrom q = sendMessage (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
+        where headers = fromList [("destination", q)]
