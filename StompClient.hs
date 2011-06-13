@@ -59,28 +59,32 @@ module StompClient where
     data Server = StompServer
     
     acknowledgeMessage :: String -> String -> Server -> IO()
-    acknowledgeMessage msgID trans = sendMessage (StompFrame ACK (HeaderMap headers) "")
+    acknowledgeMessage msgID trans = sendFrame (StompFrame ACK (HeaderMap headers) "")
         where headers = fromList [("message-id", msgID), ("transaction", trans)]
     
     connectTo :: String -> String -> Server -> IO()
-    connectTo user passcode = sendMessage (StompFrame CONNECT (HeaderMap headers) "")
+    connectTo user passcode = sendFrame (StompFrame CONNECT (HeaderMap headers) "")
         where headers = fromList [("login", user), ("passcode", passcode)]
     
     disconnectFrom :: Server -> IO()
-    disconnectFrom = sendMessage (StompFrame DISCONNECT (HeaderMap Data.Map.empty) "")
+    disconnectFrom = sendFrame (StompFrame DISCONNECT (HeaderMap Data.Map.empty) "")
     
-    sendMessage :: Frame -> Server -> IO()
-    sendMessage frame server = return ()
+    sendFrame :: Frame -> Server -> IO()
+    sendFrame frame server = return ()
+    
+    type Queue = String
+    
+    sendMessage :: String -> Server -> IO()
+    sendMessage msg = sendFrame (StompFrame SEND (HeaderMap headers) msg)
+        where headers = Data.Map.empty
     
     recvMessage :: IO()
     recvMessage = return ()
     
-    type Queue = String
-    
     subscribeTo :: Queue -> Server -> IO()
-    subscribeTo q = sendMessage (StompFrame SUBSCRIBE (HeaderMap headers) "")
+    subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "auto")] 
     
     unsubscribeFrom :: Queue -> Server -> IO()
-    unsubscribeFrom q = sendMessage (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
+    unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q)]
