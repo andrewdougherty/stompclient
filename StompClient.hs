@@ -74,9 +74,9 @@ module StompClient where
     
     type Queue = String
     
-    sendMessage :: String -> Server -> IO()
-    sendMessage msg = sendFrame (StompFrame SEND (HeaderMap headers) msg)
-        where headers = Data.Map.empty
+    sendMessage :: String -> String -> Server -> IO()
+    sendMessage msg q = sendFrame (StompFrame SEND (HeaderMap headers) msg)
+        where headers = fromList [("destination", q)]
     
     recvMessage :: IO()
     recvMessage = return ()
