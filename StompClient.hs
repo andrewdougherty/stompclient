@@ -1,5 +1,6 @@
 {-
-   SVM is an implementation of a support vector machine in the Haskell language.
+   StompClient is a library for communicating with message servers which
+   implement the Stomp protocol.
    Copyright (C) 2011  Andrew Dougherty
    
    Send email to: andrewdougherty@me.com
