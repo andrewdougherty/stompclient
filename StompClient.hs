@@ -22,7 +22,9 @@
 module StompClient where
     
     import Data.Map (Map, empty, foldrWithKey, fromList)
-    import Network
+    import Data.Maybe
+    import Network.Socket
+    import Network.URI
     import Text.Regex.Posix
     
     {-| All the stomp commands.  They are instances of Read and Show to aid serialization. -}
@@ -57,35 +59,58 @@ module StompClient where
     instance Show Frame where
         show (StompFrame command headers body) = unlines [show command, show headers, show body]
     
-    data Server = StompServer
+    data Server = StompServer {uri::URI}
+        deriving Show
     
-    acknowledgeMessage :: String -> String -> Server -> IO()
+    data ServerConnection = StompConnection {server::Server, sock::Socket, maxFrameSize :: Int}
+        deriving Show
+    
+    acknowledgeMessage :: String -> String -> ServerConnection -> IO(Int)
     acknowledgeMessage msgID trans = sendFrame (StompFrame ACK (HeaderMap headers) "")
         where headers = fromList [("message-id", msgID), ("transaction", trans)]
     
-    connectTo :: String -> String -> Server -> IO()
-    connectTo user passcode = sendFrame (StompFrame CONNECT (HeaderMap headers) "")
+    connectTo :: String -> String -> Server -> IO(Maybe ServerConnection)
+    connectTo user passcode server = do sock <- socket AF_INET Stream defaultProtocol
+                                        hostaddr <- inet_addr "127.0.0.1"
+                                        connect sock (SockAddrInet 6613 hostaddr)
+                                        sendFrame frame (StompConnection server sock 4096)
+                                        return Nothing
         where headers = fromList [("login", user), ("passcode", passcode)]
+              frame = StompFrame CONNECT (HeaderMap headers) ""
     
-    disconnectFrom :: Server -> IO()
-    disconnectFrom = sendFrame (StompFrame DISCONNECT (HeaderMap Data.Map.empty) "")
+    disconnectFrom :: ServerConnection -> IO(Int)
+    disconnectFrom = sendFrame frame
+        where frame = StompFrame DISCONNECT (HeaderMap Data.Map.empty) ""
     
-    sendFrame :: Frame -> Server -> IO()
-    sendFrame frame server = return ()
+    sendFrame :: Frame -> ServerConnection -> IO(Int)
+    sendFrame frame server = send (sock server) (show frame)
     
     type Queue = String
     
-    sendMessage :: String -> String -> Server -> IO()
+    sendMessage :: String -> String -> ServerConnection -> IO(Int)
     sendMessage msg q = sendFrame (StompFrame SEND (HeaderMap headers) msg)
         where headers = fromList [("destination", q)]
     
-    recvMessage :: IO()
-    recvMessage = return ()
+    recvFrame :: ServerConnection -> IO(Maybe Frame)
+    recvFrame server = do let frameSize = maxFrameSize server
+                          (str, len) <- recvLen (sock server) frameSize
+                          if len <= frameSize then
+                              return (Just $ read str)
+                          else
+                              return Nothing
     
-    subscribeTo :: Queue -> Server -> IO()
+    recvMessage :: ServerConnection -> IO(Maybe (String, String))
+    recvMessage server = do maybeFrame <- recvFrame server
+                            if isJust maybeFrame then do
+                               let frame = fromJust maybeFrame
+                               return (Just (body frame, body frame))
+                            else
+                               return Nothing
+    
+    subscribeTo :: Queue -> ServerConnection -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "auto")] 
     
-    unsubscribeFrom :: Queue -> Server -> IO()
+    unsubscribeFrom :: Queue -> ServerConnection -> IO(Int)
     unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q)]
