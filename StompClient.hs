@@ -21,7 +21,7 @@
 
 module StompClient where
     
-    import Data.Map (Map, empty, foldrWithKey, fromList)
+    import Data.Map (Map, empty, foldrWithKey, fromList, (!))
     import Data.Maybe
     import Network.Socket
     import Network.URI
@@ -87,7 +87,7 @@ module StompClient where
     
     type Queue = String
     
-    sendMessage :: String -> String -> ServerConnection -> IO(Int)
+    sendMessage :: String -> Queue -> ServerConnection -> IO(Int)
     sendMessage msg q = sendFrame (StompFrame SEND (HeaderMap headers) msg)
         where headers = fromList [("destination", q)]
     
@@ -95,17 +95,18 @@ module StompClient where
     recvFrame server = do let frameSize = maxFrameSize server
                           (str, len) <- recvLen (sock server) frameSize
                           if len <= frameSize then
-                              return (Just $ read str)
-                          else
+                              return $ Just (read str)
+                            else
                               return Nothing
     
     recvMessage :: ServerConnection -> IO(Maybe (String, String))
     recvMessage server = do maybeFrame <- recvFrame server
                             if isJust maybeFrame then do
-                               let frame = fromJust maybeFrame
-                               return (Just (body frame, body frame))
-                            else
-                               return Nothing
+                                let frame = fromJust maybeFrame
+                                    queue = (headerMap $ headers frame) ! "destination"
+                                return $ Just (queue, body frame)
+                              else
+                                return Nothing
     
     subscribeTo :: Queue -> ServerConnection -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
