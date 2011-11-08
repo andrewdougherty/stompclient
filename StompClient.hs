@@ -101,12 +101,10 @@ module StompClient where
     
     recvMessage :: ServerConnection -> IO(Maybe (String, String))
     recvMessage server = do maybeFrame <- recvFrame server
-                            if isJust maybeFrame then do
-                                let frame = fromJust maybeFrame
-                                    queue = (headerMap $ headers frame) ! "destination"
-                                return $ Just (queue, body frame)
-                              else
-                                return Nothing
+                            case maybeFrame of
+                                Just (StompFrame cmd heads msg) -> return $ Just (queue, msg)
+                                        where queue = (headerMap heads) ! "destination"
+                                Nothing -> return Nothing
     
     subscribeTo :: Queue -> ServerConnection -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
