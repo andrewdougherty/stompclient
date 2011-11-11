@@ -64,8 +64,7 @@ module StompClient where
     
     data ServerConnection = StompConnection {server::Server,    -- ^The STOMP server for this connection.
                                              sock::Socket,      -- ^The socket used for communication.
-                                             maxFrameSize::Int, -- ^A size in bytes for the socket buffer.
-                                             sessionID::String} -- ^A unique identifier for the session.
+                                             maxFrameSize::Int} -- ^A size in bytes for the socket buffer.
         deriving Show
     
     acknowledgeMessage :: String -> String -> ServerConnection -> IO(Int)
