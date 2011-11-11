@@ -62,7 +62,10 @@ module StompClient where
     data Server = StompServer {uri::URI}
         deriving Show
     
-    data ServerConnection = StompConnection {server::Server, sock::Socket, maxFrameSize :: Int}
+    data ServerConnection = StompConnection {server::Server,    -- ^The STOMP server for this connection.
+                                             sock::Socket,      -- ^The socket used for communication.
+                                             maxFrameSize::Int, -- ^A size in bytes for the socket buffer.
+                                             sessionID::String} -- ^A unique identifier for the session.
         deriving Show
     
     acknowledgeMessage :: String -> String -> ServerConnection -> IO(Int)
@@ -73,7 +76,7 @@ module StompClient where
     connectTo user passcode server = do sock <- socket AF_INET Stream defaultProtocol
                                         hostaddr <- inet_addr "127.0.0.1"
                                         connect sock (SockAddrInet 6613 hostaddr)
-                                        sendFrame frame (StompConnection server sock 4096)
+                                        sendFrame frame (StompConnection server sock 4096 "id")
                                         return Nothing
         where headers = fromList [("login", user), ("passcode", passcode)]
               frame = StompFrame CONNECT (HeaderMap headers) ""
