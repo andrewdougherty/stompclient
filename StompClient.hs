@@ -21,6 +21,7 @@
 
 module StompClient where
     
+    import Control.Monad.State
     import Data.Map (Map, empty, foldrWithKey, fromList, (!))
     import Data.Maybe
     import Network.Socket
@@ -64,19 +65,25 @@ module StompClient where
     
     data ServerConnection = StompConnection {server::Server,    -- ^The STOMP server for this connection.
                                              sock::Socket,      -- ^The socket used for communication.
-                                             maxFrameSize::Int, -- ^A size in bytes for the socket buffer.
-                                             sessionID::String} -- ^A unique identifier for the session.
+                                             maxFrameSize::Int} -- ^A size in bytes for the socket buffer.
         deriving Show
     
-    acknowledgeMessage :: String -> String -> ServerConnection -> IO(Int)
-    acknowledgeMessage msgID trans = sendFrame (StompFrame ACK (HeaderMap headers) "")
-        where headers = fromList [("message-id", msgID), ("transaction", trans)]
+    newtype SessionID = SessionID String
+    newtype TransactionID = TransactionID String
+    
+    type Session = State SessionID
+    type Transaction = State TransactionID
+    
+    acknowledgeMessage :: String -> Transaction -> IO(Int)
+    acknowledgeMessage msgID trans = sendFrame (StompFrame ACK (HeaderMap headers) "") conn
+        where headers = fromList [("message-id", msgID), ("transaction", gets trans)]
+              conn = StompConnection "http://127.0.0.1" 4 5
     
     connectTo :: String -> String -> Server -> IO(Maybe ServerConnection)
     connectTo user passcode server = do sock <- socket AF_INET Stream defaultProtocol
                                         hostaddr <- inet_addr "127.0.0.1"
                                         connect sock (SockAddrInet 6613 hostaddr)
-                                        sendFrame frame (StompConnection server sock 4096 "id")
+                                        sendFrame frame (StompConnection server sock 4096)
                                         return Nothing
         where headers = fromList [("login", user), ("passcode", passcode)]
               frame = StompFrame CONNECT (HeaderMap headers) ""
@@ -109,10 +116,10 @@ module StompClient where
                                         where queue = (headerMap heads) ! "destination"
                                 Nothing -> return Nothing
     
-    subscribeTo :: Queue -> ServerConnection -> IO(Int)
+    subscribeTo :: Queue -> Transaction -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "auto")] 
     
-    unsubscribeFrom :: Queue -> ServerConnection -> IO(Int)
+    unsubscribeFrom :: Queue -> Transaction -> IO(Int)
     unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q)]
