@@ -50,7 +50,7 @@ module StompClient where
             where concatHeaderToString k v s = k ++ ": " ++ v ++ "\n" ++ s
     
     {-| All stomp messages are frames. -}
-    data Frame = StompFrame {command::Command, headers::HeaderMap, body::String}
+    data Frame = StompFrame {command :: Command, headers :: HeaderMap, body :: String}
     
     {-| The Frame is an instance of Read to aid serialization. -}
     instance Read Frame where
@@ -62,12 +62,12 @@ module StompClient where
     instance Show Frame where
         show (StompFrame command headers body) = unlines [show command, show headers, show body]
     
-    data Server = StompServer {uri::URI}
+    data Server = StompServer {uri :: URI}
         deriving Show
     
-    data ServerConnection = StompConnection {server::Server,    -- ^The STOMP server for this connection.
+    data ServerConnection = StompConnection {server::Server,    -- ^The server for this connection.
                                              sock::Socket,      -- ^The socket used for communication.
-                                             maxFrameSize::Int} -- ^A size in bytes for the socket buffer.
+                                             maxFrameSize::Int} -- ^Size in bytes for the socket buffer.
     
     type MessageID = String
     type SessionID = String
@@ -76,42 +76,42 @@ module StompClient where
     type Session = State SessionID
     type Transaction = State TransactionID 
     
-    acknowledgeMessage :: Transaction -> IO(Int)
-    acknowledgeMessage = do id <- get
-                            sendFrame (StompFrame ACK (HeaderMap headers) "") conn
-        where headers = fromList [("message-id", id), ("transaction", id)]
-              conn = StompConnection "http://127.0.0.1" 4 5
+    acknowledgeMessage :: ServerConnection -> (Transaction MessageID) -> IO(Int)
+    acknowledgeMessage conn = do id <- get
+                                 let headers = fromList [("message-id", id), ("transaction", id)]
+                                 sendFrame (StompFrame ACK (HeaderMap headers) "") conn
     
     connectTo :: String -> String -> Server -> IO(Maybe ServerConnection)
     connectTo user passcode server = do 
         sock <- socket AF_INET Stream defaultProtocol
         hostaddr <- inet_addr "127.0.0.1"
         connect sock (SockAddrInet 6613 hostaddr)
-        let connection = (StompConnection server sock 4096)
+        let conn = (StompConnection server sock 4096)
             headers = fromList [("login", user), ("passcode", passcode), ("accept-version", protocols)]
-            frame = StompFrame CONNECT (HeaderMap headers)
-        response <- exchangeFrame frame connection
-        let isConnected = (member CONNECTED) . headerMap
-        return $ maybe Nothing (\f -> if isConnected f then Just connection else Nothing) response
+            frame = StompFrame CONNECT (HeaderMap headers) ""
+        response <- exchangeFrame frame conn
+        let isConnected :: Frame -> Bool
+            isConnected = (member "connected") . headerMap . headers
+        return $ maybe Nothing (\f -> if isConnected f then Just conn else Nothing) response
     
     disconnectFrom :: ServerConnection -> IO(Int)
     disconnectFrom = sendFrame frame
         where frame = StompFrame DISCONNECT (HeaderMap Data.Map.empty) ""
     
     exchangeFrame :: Frame -> ServerConnection -> IO(Maybe Frame)
-    exchangeFrame frame connection = do sendFrame
-                                        return (recvFrame connection)
+    exchangeFrame frame conn = do sendFrame frame conn
+                                  recvFrame conn
     
-    sendFrame :: Frame -> ServerConnection -> IO()
+    sendFrame :: Frame -> ServerConnection -> IO(Int)
     sendFrame frame server = send (sock server) (show frame)
     
     type Queue = String
     
     sendMessage :: String -> Queue -> MessageID -> TransactionID -> ServerConnection -> IO(Int)
     sendMessage msg q mid tid conn = do
-               sendFrame (StompFrame BEGIN (fromList [("transaction", id)]) "") conn
+               sendFrame (StompFrame BEGIN (HeaderMap $ fromList [("transaction", tid)]) "") conn
+               let headers = fromList [("destination", q), ("transaction", tid)]
                sendFrame (StompFrame SEND (HeaderMap headers) msg) conn
-        where headers = fromList [("destination", q), ("transaction", id)]
     
     recvFrame :: ServerConnection -> IO(Maybe Frame)
     recvFrame server = do let frameSize = maxFrameSize server
@@ -123,13 +123,14 @@ module StompClient where
     
     recvMessage :: ServerConnection -> IO(Maybe (String, String))
     recvMessage server = do maybeFrame <- recvFrame server
-                            let getQueue = (flip (!) "destination") . headerMap
-                            maybe Nothing (\f -> Just (getQueue f, body f)) maybeFrame
+                            let getQueue = (flip (!) "destination") . headerMap . headers
+                            return $ maybe Nothing (\f -> Just (getQueue f, body f)) maybeFrame
     
-    subscribeTo :: Queue -> Transaction -> IO(Int)
+    subscribeTo :: Queue -> (Transaction a) -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "client-individual")] 
     
-    unsubscribeFrom :: Queue -> Transaction -> IO(Int)
+    unsubscribeFrom :: Queue -> (Transaction a) -> IO(Int)
     unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q)]
+
