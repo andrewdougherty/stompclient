@@ -21,7 +21,7 @@
 
 module StompClient where
     
-    import Data.Map (Map, empty, foldrWithKey, fromList, (!))
+    import Data.Map (Map, empty, foldrWithKey, fromList, (!), member)
     import Data.Maybe
     import Network.Socket
     import Network.URI
@@ -75,7 +75,7 @@ module StompClient where
     connectTo user passcode server = do sock <- socket AF_INET Stream defaultProtocol
                                         hostaddr <- inet_addr "127.0.0.1"
                                         connect sock (SockAddrInet 6613 hostaddr)
-                                        sendFrame frame (StompConnection server sock 4096 "id")
+                                        sendFrame frame (StompConnection server sock 4096)
                                         return Nothing
         where headers = fromList [("login", user), ("passcode", passcode)]
               frame = StompFrame CONNECT (HeaderMap headers) ""
