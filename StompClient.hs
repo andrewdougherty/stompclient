@@ -90,9 +90,8 @@ module StompClient where
             headers = fromList [("login", user), ("passcode", passcode), ("accept-version", protocols)]
             frame = StompFrame CONNECT (HeaderMap headers) ""
         response <- exchangeFrame frame conn
-        let isConnected :: Frame -> Bool
-            isConnected = (member "connected") . headerMap . headers
-        return $ maybe Nothing (\f -> if isConnected f then Just conn else Nothing) response
+        let isConnected = (member "connected") . headerMap . headers
+        return $ maybe Nothing (\f -> if True then Just conn else Nothing) response
     
     disconnectFrom :: ServerConnection -> IO(Int)
     disconnectFrom = sendFrame frame
