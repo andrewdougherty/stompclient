@@ -22,7 +22,7 @@
 module StompClient where
     
     import Control.Monad.State
-    import Data.Map (Map, empty, foldrWithKey, fromList, member, (!))
+    import Data.Map (Map, empty, foldrWithKey, fromList, insert, member, (!))
     import Data.Maybe
     import Network.Socket
     import Network.URI
