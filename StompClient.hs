@@ -36,7 +36,6 @@ module StompClient where
         deriving (Read, Show)
     
     {-| The HeaderMap holds all the headers in the Frame.  The keys and values are strings. -}
-    newtype HeaderMap = HeaderMap {headerMap :: Map String String}
     newtype HeaderMap = HeaderMap {headerMap::Map String String}
     
     {-| The HeaderMap is an instance of Read to aid serialization. -}
@@ -51,7 +50,6 @@ module StompClient where
             where concatHeaderToString k v s = k ++ ": " ++ v ++ "\n" ++ s
     
     {-| All stomp messages are frames. -}
-    data Frame = StompFrame {command :: Command, headers :: HeaderMap, body :: String}
     data Frame = StompFrame {command::Command, headers::HeaderMap, body::String}
     
     {-| The Frame is an instance of Read to aid serialization. -}
@@ -64,7 +62,6 @@ module StompClient where
     instance Show Frame where
         show (StompFrame command headers body) = unlines [show command, show headers, show body]
     
-    data Server = StompServer {uri :: URI}
     data Server = StompServer {uri::URI}
         deriving Show
     
