@@ -95,8 +95,7 @@ module StompClient where
         where frame = StompFrame DISCONNECT (HeaderMap Data.Map.empty) ""
     
     exchangeFrame :: Frame -> ServerConnection -> IO(Maybe Frame)
-    exchangeFrame frame conn = do sendFrame frame conn
-                                  recvFrame conn
+    exchangeFrame frame = sendFrame frame >>= recvFrame
     
     sendFrame :: ServerConnection -> Frame -> IO(Int)
     sendFrame server frame = send (sock server) (show frame)
