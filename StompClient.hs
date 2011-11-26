@@ -101,8 +101,8 @@ module StompClient where
     exchangeFrame frame conn = do sendFrame frame conn
                                   recvFrame conn
     
-    sendFrame :: Frame -> ServerConnection -> IO(Int)
-    sendFrame frame server = send (sock server) (show frame)
+    sendFrame :: ServerConnection -> Frame -> IO(Int)
+    sendFrame server frame = send (sock server) (show frame)
     
     type Queue = String
     
