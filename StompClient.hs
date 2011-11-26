@@ -69,9 +69,6 @@ module StompClient where
                                              sock::Socket,      -- ^The socket used for communication.
                                              maxFrameSize::Int} -- ^Size in bytes for the socket buffer.
     
-    type MessageID = String
-    type SessionID = String
-    type TransactionID = String
     
     type Session = State SessionID
     type Transaction = State TransactionID 
@@ -106,7 +103,7 @@ module StompClient where
     
     type Queue = String
     
-    sendMessage :: String -> Queue -> MessageID -> TransactionID -> ServerConnection -> IO(Int)
+    sendMessage :: String -> Queue -> String -> String -> ServerConnection -> IO(Int)
     sendMessage msg q mid tid conn = do
                sendFrame (StompFrame BEGIN (HeaderMap $ fromList [("transaction", tid)]) "") conn
                let headers = fromList [("destination", q), ("transaction", tid)]
