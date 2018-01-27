@@ -69,26 +69,59 @@ module StompClient where
                                              sock::Socket,      -- ^The socket used for communication.
                                              maxFrameSize::Int} -- ^Size in bytes for the socket buffer.
     
+    ---------------  Sessions  -----------------
+    data Session = StompSession {sessionID::String, sessionConnection::ServerConnection}
     
-    type Session = State SessionID
-    type Transaction = State TransactionID 
+    startSession :: String -> String -> Server -> Int -> IO(Maybe Session)
+    startSession = ((((return . mkSession =<<) .) .) .) . connectTo
+        where mkSession (Just frame, conn) = Just (StompSession id conn)
+                  where id = (headerMap $ headers frame) ! "session"
+              mkSession _ = Nothing
     
-    acknowledgeMessage :: ServerConnection -> (Transaction MessageID) -> IO(Int)
-    acknowledgeMessage conn = do id <- get
-                                 let headers = fromList [("message-id", id), ("transaction", id)]
-                                 sendFrame (StompFrame ACK (HeaderMap headers) "") conn
+    endSession :: Session -> IO(Bool)
+    endSession (StompSession id conn) = disconnectFrom conn >> return True
+
+    ---------------  Transactions  -----------------
+    data Transaction = StompTransaction String
+                     | TransactionStarted String
+                     | TransactionFinished String
     
-    connectTo :: String -> String -> Server -> IO(Maybe ServerConnection)
-    connectTo user passcode server = do 
+    startTransaction :: Session -> String -> IO(Maybe Transaction)
+    startTransaction (StompSession _ conn) transID = do
+                let headerMap = HeaderMap $ fromList [("transaction", transID)]
+                response <- exchangeFrame (StompFrame BEGIN headerMap "")
+                case response of
+                    Just frame -> return $ Just (TransactionStarted transID)
+                    otherwise -> return Nothing
+      
+    continueTransaction :: Session -> Transaction -> Frame -> IO(Maybe Frame, Transaction)
+    continueTransaction (StompSession _ conn) trans frame = return (exchangeFrame frame, trans)
+    
+    endTransaction :: Session -> Transaction -> IO(Maybe Transaction)
+    endTransaction (StompSession _ conn) (StompTransaction transID) = do
+                response <- exchangeFrame $ StompFrame COMMIT (fromList [("transaction", transID)]) ""
+                case response of
+                    Just frame -> return $ Just (TransactionFinished transID)
+                    otherwise -> return Nothing
+    
+    ---------------  Other Stuff  ----------------- 
+    acknowledgeMessage :: ServerConnection -> String -> String -> IO(Int)
+    acknowledgeMessage conn msgID tID = sendFrame conn frame
+        where frame = StompFrame ACK (fromList [("message-id", msgID), ("transaction", tID)]) ""
+    
+    connectTo :: String -> String -> Server -> Int -> IO(Maybe Frame, ServerConnection)
+    connectTo user passcode server frameSize = withSocketsDo $ do 
         sock <- socket AF_INET Stream defaultProtocol
-        hostaddr <- inet_addr "127.0.0.1"
-        connect sock (SockAddrInet 6613 hostaddr)
-        let conn = (StompConnection server sock 4096)
-            headers = fromList [("login", user), ("passcode", passcode), ("accept-version", protocols)]
-            frame = StompFrame CONNECT (HeaderMap headers) ""
-        response <- exchangeFrame frame conn
-        let isConnected = (member "connected") . headerMap . headers
-        return $ maybe Nothing (\f -> if True then Just conn else Nothing) response
+        case uriAuthority (uri server) of
+            Just (URIAuth user serverName serverPort) -> do
+                hostaddr <- inet_addr serverName
+                connect sock (SockAddrInet (toInteger serverPort) hostaddr)
+                let conn = (StompConnection server sock frameSize)
+                    headers = fromList [("login", user), ("passcode", passcode),
+                                        ("accept-version", protocols)]
+                    frame = StompFrame CONNECT (HeaderMap headers) ""
+                return (exchangeFrame frame conn, conn)
+            otherwise -> return Nothing
     
     disconnectFrom :: ServerConnection -> IO(Int)
     disconnectFrom = sendFrame frame
@@ -101,7 +134,6 @@ module StompClient where
     sendFrame server frame = send (sock server) (show frame)
     
     type Queue = String
-    
     sendMessage :: String -> Queue -> String -> String -> ServerConnection -> IO(Int)
     sendMessage msg q mid tid conn = do
                sendFrame (StompFrame BEGIN (HeaderMap $ fromList [("transaction", tid)]) "") conn
@@ -121,11 +153,11 @@ module StompClient where
                             let getQueue = (flip (!) "destination") . headerMap . headers
                             return $ maybe Nothing (\f -> Just (getQueue f, body f)) maybeFrame
     
-    subscribeTo :: Queue -> (Transaction a) -> IO(Int)
+    subscribeTo :: Queue -> Transaction -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "client-individual")] 
     
-    unsubscribeFrom :: Queue -> (Transaction a) -> IO(Int)
+    unsubscribeFrom :: Queue -> Transaction -> IO(Int)
     unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q)]
 
