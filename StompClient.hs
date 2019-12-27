@@ -19,26 +19,32 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
+{-# LANGUAGE FlexibleContexts #-}
+
 module StompClient where
     
     import Data.Map (Map, empty, foldrWithKey, fromList, (!), member)
     import Data.Maybe
     import Network.Socket
     import Network.URI
-    import Text.Regex.Posix
+    import Text.Regex.Base
+    import Text.Regex.TDFA
     
-    {-| All the stomp commands.  They are instances of Read and Show to aid serialization. -}
+    {-| All the stomp commands.  They are instances of Read and Show to aid
+        serialization. -}
     data Command = ACK | ABORT | BEGIN | CONNECT | CONNECTED | COMMIT
                  | DISCONNECT | SEND | SUBSCRIBE | UNSUBSCRIBE
         deriving (Read, Show)
     
-    {-| The HeaderMap holds all the headers in the Frame.  The keys and values are strings. -}
+    {-| The HeaderMap holds all the headers in the Frame.  The keys and values
+        are strings. -}
     newtype HeaderMap = HeaderMap {headerMap :: Map String String}
     
     {-| The HeaderMap is an instance of Read to aid serialization. -}
     instance Read HeaderMap where
-        readsPrec _ s = [(HeaderMap $ fromList $ map getKeyValuePair (lines s),"")]
-            where getKeyValuePair s = (k, v)
+        readsPrec _ s = [(HeaderMap headerMap, "")]
+            where headerMap = fromList $ map getKeyValuePair (lines s)
+                  getKeyValuePair s = (k, v)
                       where (k, _, v) = s =~ ": " :: (String, String, String)
     
     {-| The HeaderMap is an instance of Show to aid serialization. -}
@@ -52,31 +58,35 @@ module StompClient where
     {-| The Frame is an instance of Read to aid serialization. -}
     instance Read Frame where
         readsPrec _ s = [(StompFrame (read command) (read headers) body, "")]
-            where (command, _, theRest) = s =~ "\n" :: (String, String, String)
-                  (headers, _, body) = theRest =~ "\n\n" :: (String, String, String)
+           where (command, _, rest) = s =~ "\n" :: (String, String, String)
+                 (headers, _, body) = rest =~ "\n\n" :: (String, String, String)
     
     {-| The Frame is an instance of Show to aid serialization. -}
     instance Show Frame where
-        show (StompFrame command headers body) = unlines [show command, show headers, show body]
+        show (StompFrame command headers body) =
+                unlines [show command, show headers, show body]
     
     data Server = StompServer {uri::URI}
         deriving Show
     
-    data ServerConnection = StompConnection {server::Server,    -- ^The STOMP server for this connection.
-                                             sock::Socket,      -- ^The socket used for communication.
-                                             maxFrameSize::Int} -- ^A size in bytes for the socket buffer.
+    data ServerConnection = StompConnection
+                {server::Server,    -- ^The STOMP server for this connection.
+                 sock::Socket,      -- ^The socket used for communication.
+                 maxFrameSize::Int} -- ^A size in bytes for the socket buffer.
         deriving Show
     
     acknowledgeMessage :: String -> String -> ServerConnection -> IO(Int)
-    acknowledgeMessage msgID trans = sendFrame (StompFrame ACK (HeaderMap headers) "")
+    acknowledgeMessage msgID trans = sendFrame
+                (StompFrame ACK (HeaderMap headers) "")
         where headers = fromList [("message-id", msgID), ("transaction", trans)]
     
     connectTo :: String -> String -> Server -> IO(Maybe ServerConnection)
-    connectTo user passcode server = do sock <- socket AF_INET Stream defaultProtocol
-                                        hostaddr <- inet_addr "127.0.0.1"
-                                        connect sock (SockAddrInet 6613 hostaddr)
-                                        sendFrame frame (StompConnection server sock 4096)
-                                        return Nothing
+    connectTo user passcode server = do
+                sock <- socket AF_INET Stream defaultProtocol
+                hostaddr <- inet_addr "127.0.0.1"
+                connect sock (SockAddrInet 6613 hostaddr)
+                sendFrame frame (StompConnection server sock 4096)
+                return Nothing
         where headers = fromList [("login", user), ("passcode", passcode)]
               frame = StompFrame CONNECT (HeaderMap headers) ""
     
@@ -102,16 +112,18 @@ module StompClient where
                               return Nothing
     
     recvMessage :: ServerConnection -> IO(Maybe (String, String))
-    recvMessage server = do maybeFrame <- recvFrame server
-                            case maybeFrame of
-                                Just (StompFrame cmd heads msg) -> return $ Just (queue, msg)
-                                        where queue = (headerMap heads) ! "destination"
-                                Nothing -> return Nothing
+    recvMessage server = do
+        maybeFrame <- recvFrame server
+        case maybeFrame of
+             Just (StompFrame cmd heads msg) -> return $ Just (queue, msg)
+                where queue = (headerMap heads) ! "destination"
+             Nothing -> return Nothing
     
     subscribeTo :: Queue -> ServerConnection -> IO(Int)
     subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "auto")] 
     
     unsubscribeFrom :: Queue -> ServerConnection -> IO(Int)
-    unsubscribeFrom q = sendFrame (StompFrame UNSUBSCRIBE (HeaderMap headers) "")
-        where headers = fromList [("destination", q)]
+    unsubscribeFrom q = sendFrame (unsubscribeFrame "")
+        where unsubscribeFrame = StompFrame UNSUBSCRIBE (HeaderMap headers)
+              headers = fromList [("destination", q)]
