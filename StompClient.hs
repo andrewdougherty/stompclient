@@ -103,20 +103,24 @@ module StompClient where
     startTransaction :: Session -> String -> IO(Maybe Transaction)
     startTransaction (StompSession _ conn) transID = do
                 let headerMap = HeaderMap $ fromList [("transaction", transID)]
-                response <- exchangeFrame (StompFrame BEGIN headerMap "")
+                response <- exchangeFrame (StompFrame BEGIN headerMap "") conn
                 case response of
                     Just frame -> return $ Just (TransactionStarted transID)
                     otherwise -> return Nothing
 
     continueTransaction :: Session -> Transaction -> Frame -> IO(Maybe Frame, Transaction)
-    continueTransaction (StompSession _ conn) trans frame = return (exchangeFrame frame, trans)
+    continueTransaction (StompSession _ conn) trans frame = do
+                f <- exchangeFrame frame conn
+                return (f, trans)
 
     endTransaction :: Session -> Transaction -> IO(Maybe Transaction)
     endTransaction (StompSession _ conn) (StompTransaction transID) = do
-                response <- exchangeFrame $ StompFrame COMMIT (fromList [("transaction", transID)]) ""
-                case response of
-                    Just frame -> return $ Just (TransactionFinished transID)
-                    otherwise -> return Nothing
+            let headers = fromList [("transaction", transID)]
+                frame = StompFrame COMMIT headers ""
+            response <- exchangeFrame frame conn
+            case response of
+                Just frame -> return $ Just (TransactionFinished transID)
+                otherwise -> return Nothing
 
     ---------------  Other Stuff  -----------------
     acknowledgeMessage :: ServerConnection -> String -> String -> IO(Int)
@@ -129,20 +133,24 @@ module StompClient where
         case uriAuthority (uri server) of
             Just (URIAuth user serverName serverPort) -> do
                 hostaddr <- inet_addr serverName
-                connect sock (SockAddrInet (toInteger serverPort) hostaddr)
+                let portNumber = read serverPort :: PortNumber
+                connect sock (SockAddrInet portNumber hostaddr)
                 let conn = (StompConnection server sock frameSize)
                     headers = fromList [("login", user), ("passcode", passcode),
                                         ("accept-version", protocols)]
                     frame = StompFrame CONNECT (HeaderMap headers) ""
-                return (exchangeFrame frame conn, conn)
+                response <- exchangeFrame frame conn
+                return (response, conn)
             otherwise -> return Nothing
 
     disconnectFrom :: ServerConnection -> IO(Int)
-    disconnectFrom = sendFrame frame
+    disconnectFrom conn = sendFrame conn frame
         where frame = StompFrame DISCONNECT (HeaderMap Data.Map.empty) ""
 
-    exchangeFrame :: Frame -> ServerConnection -> IO(Maybe Frame)
-    exchangeFrame frame = sendFrame frame >>= recvFrame
+    exchangeFrame :: ServerConnection -> Frame -> IO(Maybe Frame)
+    exchangeFrame conn frame = do
+          res <- sendFrame conn frame
+          recvFrame conn
 
     sendFrame :: ServerConnection -> Frame -> IO(Int)
     sendFrame server frame = send (sock server) (show frame)
@@ -150,9 +158,10 @@ module StompClient where
     type Queue = String
     sendMessage :: String -> Queue -> String -> String -> ServerConnection -> IO(Int)
     sendMessage msg q mid tid conn = do
-               sendFrame (StompFrame BEGIN (HeaderMap $ fromList [("transaction", tid)]) "") conn
-               let headers = fromList [("destination", q), ("transaction", tid)]
-               sendFrame (StompFrame SEND (HeaderMap headers) msg) conn
+          let frame = StompFrame BEGIN (HeaderMap $ fromList [("transaction", tid)]) ""
+          sendFrame conn frame
+          let headers = fromList [("destination", q), ("transaction", tid)]
+          sendFrame conn (StompFrame SEND (HeaderMap headers) msg)
 
     recvFrame :: ServerConnection -> IO(Maybe Frame)
     recvFrame server = do let frameSize = maxFrameSize server
