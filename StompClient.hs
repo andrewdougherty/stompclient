@@ -31,7 +31,7 @@ module StompClient where
     import Text.Regex.Base
     import Text.Regex.TDFA
 
-    protocols = ["1.2"] -- ^STOMP protocol versions supported by this client.
+    protocols = "1.2" -- ^STOMP protocol versions supported by this client.
 
     {-| All the STOMP commands.  They are instances of Read and Show to aid
         serialization. -}
@@ -103,21 +103,21 @@ module StompClient where
     startTransaction :: Session -> String -> IO(Maybe Transaction)
     startTransaction (StompSession _ conn) transID = do
                 let headerMap = HeaderMap $ fromList [("transaction", transID)]
-                response <- exchangeFrame (StompFrame BEGIN headerMap "") conn
+                response <- exchangeFrame conn (StompFrame BEGIN headerMap "")
                 case response of
                     Just frame -> return $ Just (TransactionStarted transID)
                     otherwise -> return Nothing
 
     continueTransaction :: Session -> Transaction -> Frame -> IO(Maybe Frame, Transaction)
     continueTransaction (StompSession _ conn) trans frame = do
-                f <- exchangeFrame frame conn
+                f <- exchangeFrame conn frame
                 return (f, trans)
 
     endTransaction :: Session -> Transaction -> IO(Maybe Transaction)
     endTransaction (StompSession _ conn) (StompTransaction transID) = do
-            let headers = fromList [("transaction", transID)]
+            let headers = HeaderMap(fromList [("transaction", transID)])
                 frame = StompFrame COMMIT headers ""
-            response <- exchangeFrame frame conn
+            response <- exchangeFrame conn frame
             case response of
                 Just frame -> return $ Just (TransactionFinished transID)
                 otherwise -> return Nothing
@@ -125,7 +125,8 @@ module StompClient where
     ---------------  Other Stuff  -----------------
     acknowledgeMessage :: ServerConnection -> String -> String -> IO(Int)
     acknowledgeMessage conn msgID tID = sendFrame conn frame
-        where frame = StompFrame ACK (fromList [("message-id", msgID), ("transaction", tID)]) ""
+        where headers = HeaderMap (fromList [("message-id", msgID), ("transaction", tID)])
+              frame = StompFrame ACK headers ""
 
     connectTo :: String -> String -> Server -> Int -> IO(Maybe Frame, ServerConnection)
     connectTo user passcode server frameSize = withSocketsDo $ do
@@ -139,9 +140,9 @@ module StompClient where
                     headers = fromList [("login", user), ("passcode", passcode),
                                         ("accept-version", protocols)]
                     frame = StompFrame CONNECT (HeaderMap headers) ""
-                response <- exchangeFrame frame conn
+                response <- exchangeFrame conn frame
                 return (response, conn)
-            otherwise -> return Nothing
+            otherwise -> return (Nothing, undefined)
 
     disconnectFrom :: ServerConnection -> IO(Int)
     disconnectFrom conn = sendFrame conn frame
@@ -179,11 +180,11 @@ module StompClient where
                 where queue = (headerMap heads) ! "destination"
              Nothing -> return Nothing
 
-    subscribeTo :: Queue -> Transaction -> IO(Int)
-    subscribeTo q = sendFrame (StompFrame SUBSCRIBE (HeaderMap headers) "")
+    subscribeTo :: ServerConnection -> Queue -> IO(Int)
+    subscribeTo server q = sendFrame server (StompFrame SUBSCRIBE (HeaderMap headers) "")
         where headers = fromList [("destination", q), ("ack", "client-individual")]
 
-    unsubscribeFrom :: Queue -> ServerConnection -> IO(Int)
-    unsubscribeFrom q = sendFrame (unsubscribeFrame "")
+    unsubscribeFrom :: ServerConnection -> Queue -> IO(Int)
+    unsubscribeFrom server q = sendFrame server (unsubscribeFrame "")
         where unsubscribeFrame = StompFrame UNSUBSCRIBE (HeaderMap headers)
               headers = fromList [("destination", q)]
