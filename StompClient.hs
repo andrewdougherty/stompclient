@@ -31,14 +31,17 @@ module StompClient where
     import Text.Regex.Base
     import Text.Regex.TDFA
 
-    protocols = "1.0" -- ^STOMP protocol versions supported by this client.
+    protocols = ["1.2"] -- ^STOMP protocol versions supported by this client.
 
-    {-| All the STOMP commands.  They are instances of Read and Show to aid serialization. -}
-    data Command = ACK | ABORT | BEGIN | CONNECT | CONNECTED | COMMIT | DISCONNECT
-                 | ERROR | MESSGAGE | RECEIPT | SEND | STOMP | SUBSCRIBE | UNSUBSCRIBE
+    {-| All the STOMP commands.  They are instances of Read and Show to aid
+        serialization. -}
+    data Command = ACK | ABORT | BEGIN | CONNECT | CONNECTED | COMMIT
+                 | DISCONNECT | ERROR | MESSGAGE | RECEIPT | SEND | STOMP
+                 | SUBSCRIBE | UNSUBSCRIBE
         deriving (Read, Show)
 
-    {-| The HeaderMap holds all the headers in the Frame.  The keys and values are strings. -}
+    {-| The HeaderMap holds all the headers in the Frame.  The keys and values
+        are strings. -}
     newtype HeaderMap = HeaderMap {headerMap::Map String String}
 
     {-| The HeaderMap is an instance of Read to aid serialization. -}
@@ -67,15 +70,21 @@ module StompClient where
         show (StompFrame command headers body) =
                 unlines [show command, show headers, show body]
 
+    {-| The StopServer is identified by its uri. -}
     data Server = StompServer {uri::URI}
         deriving Show
 
-    data ServerConnection = StompConnection {server::Server,    -- ^The server for this connection.
-                                             sock::Socket,      -- ^The socket used for communication.
-                                             maxFrameSize::Int} -- ^Size in bytes for the socket buffer.
+    data ServerConnection = StompConnection {
+            server::Server,    -- ^The server for this connection.
+            sock::Socket,      -- ^The socket used for communication.
+            maxFrameSize::Int  -- ^Size in bytes for the socket buffer.
+        }
 
     ---------------  Sessions  -----------------
-    data Session = StompSession {sessionID::String, sessionConnection::ServerConnection}
+    data Session = StompSession {
+              sessionID::String,
+              sessionConnection::ServerConnection
+         }
 
     startSession :: String -> String -> Server -> Int -> IO(Maybe Session)
     startSession = ((((return . mkSession =<<) .) .) .) . connectTo
