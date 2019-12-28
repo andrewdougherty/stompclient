@@ -26,7 +26,10 @@ module StompClient where
     import Control.Monad.State
     import Data.Map (Map, empty, foldrWithKey, fromList, insert, member, (!))
     import Data.Maybe
+    import Data.Text
+    import Data.Text.Encoding
     import Network.Socket
+    import Network.Socket.ByteString as BSock
     import Network.URI
     import Text.Regex.Base
     import Text.Regex.TDFA
@@ -154,7 +157,7 @@ module StompClient where
           recvFrame conn
 
     sendFrame :: ServerConnection -> Frame -> IO(Int)
-    sendFrame server frame = send (sock server) (show frame)
+    sendFrame server frame = BSock.send (sock server) (encodeUtf8 $ pack $ show frame)
 
     type Queue = String
     sendMessage :: String -> Queue -> String -> String -> ServerConnection -> IO(Int)
